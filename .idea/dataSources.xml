@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <project version="4">
   <component name="DataSourceManagerImpl" format="xml" multifile-model="true">
-    <data-source source="LOCAL" name="e-farmer_db@pythonmongo.bo5uu2w.mongodb.net" uuid="1e68d6bd-7a5c-4897-a82e-9e1b3372c607">
+    <data-source source="LOCAL" name="FastApi-Mongo" uuid="deb84785-e411-4aa9-88ae-96d66544b82d">
       <driver-ref>mongo</driver-ref>
       <synchronize>true</synchronize>
       <jdbc-driver>com.dbschema.MongoJdbcDriver</jdbc-driver>

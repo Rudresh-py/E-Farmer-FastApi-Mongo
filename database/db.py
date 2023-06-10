@@ -5,7 +5,8 @@ MONGO_URI = "mongodb+srv://rudreshcg:Softsuave123@pythonmongo.bo5uu2w.mongodb.ne
 client = MongoClient(MONGO_URI)
 db = client["e-farmer_db"]
 # collection = db["your_collection_name"]
-collection = db["user_register"]
+user_register_collection = db["user_register"]
+fertilizers_collection = db["fertilizers"]
 
 
 
