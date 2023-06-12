@@ -7,9 +7,9 @@ from datetime import datetime
 class UserRegisterModel(BaseModel):
     full_name: Optional[str] = None
     phone_number: Optional[str] = None
-    username: str
+    username: Optional[str]
     password: str
-    email: Optional[EmailStr] = None
+    email: EmailStr = None
     address: Optional[str] = None
     pincode: Optional[str] = None
     farmerid: Optional[str] = None
@@ -20,6 +20,11 @@ class UserRegisterModel(BaseModel):
     created_at: Optional[datetime]
     updated_at: Optional[datetime]
 
+
+
+class UserLogin(BaseModel):
+    email: EmailStr
+    password: str
 
 #     class Meta:
 #         verbose_name_plural = "Customer_vendor_table"
@@ -47,9 +52,21 @@ class FertilizersModel(BaseModel):
     name: str
     desc: str
     image: Optional[bytes] = None
-    farmer: Optional[bool] = None
-    aggregator: Optional[bool] = None
+    is_farmer: Optional[bool] = None
+    is_aggregator: Optional[bool] = None
     price: Optional[float] = None
+    created_at: Optional[datetime]
+    updated_at: Optional[datetime]
+
+
+class ProductModel(BaseModel):
+    name: str
+    desc: str
+    image: Optional[bytes] = None
+    is_aggregator: Optional[bool] = None
+    price: Optional[float] = None
+    # category: str
+    # user_id: str
     created_at: Optional[datetime]
     updated_at: Optional[datetime]
 
