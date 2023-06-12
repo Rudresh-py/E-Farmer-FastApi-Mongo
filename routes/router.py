@@ -9,6 +9,7 @@ from fastapi import FastAPI, Depends, HTTPException, status
 from fastapi.security import OAuth2PasswordBearer
 from passlib.context import CryptContext
 from datetime import datetime, timedelta
+from bson import ObjectId
 
 router = APIRouter()
 security = HTTPBasic()
@@ -17,7 +18,7 @@ oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/token")
 pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 SECRET_KEY = "your-secret-key"
 ALGORITHM = "HS256"
-ACCESS_TOKEN_EXPIRE_MINUTES = 30
+ACCESS_TOKEN_EXPIRE_MINUTES = 500
 
 
 @router.post("/register", response_model=UserRegisterModel)
@@ -95,9 +96,45 @@ def login(user: UserLogin):
 
 
 @router.post("/products", status_code=201)
-def create_post(product: ProductModel, user: UserRegisterModel = Depends(get_current_user)):
-    post_data = product.dict()
-    post_data["user_id"] = user["_id"]  # Assuming the User model has an "id" field representing the user ID
-    post_id = product_collection.insert_one(post_data).inserted_id
-    return {"post_id": str(post_id)}
+def create_product(product: ProductModel, user: UserRegisterModel = Depends(get_current_user)):
+    product.created_at = datetime.utcnow()
+    product.updated_at = datetime.utcnow()
+    product = product.dict()
+    product["user_id"] = user["_id"]
+    product_id = product_collection.insert_one(product).inserted_id
+    return {"post_id": str(product_id)}
+
+
+@router.put("/products/{product_id}")
+def update_product(product_id: str, product: ProductModel):
+    product.updated_at = datetime.utcnow()
+    product_dict = product.dict()
+    updated_product = product_collection.update_one({"_id": ObjectId(product_id)}, {"$set": product_dict})
+    if updated_product.modified_count > 0:
+        return {"message": "Product updated successfully"}
+    else:
+        return {"message": "Product not found"}
+
+
+@router.get("/products", response_model=List[ProductModel])
+def get_products():
+    products = []
+    for document in product_collection.find({}):
+        document["user_id"] = str(document["user_id"])
+        product_data = ProductModel(**document)
+        products.append(product_data)
+    return products
+
+
+@router.get("/products/{product_id}", response_model=ProductModel)
+def get_products(product_id: str):
+    product = product_collection.find_one({"_id": ObjectId(product_id)})
+    product["user_id"] = str(product["user_id"])
+    product = ProductModel(**product)
+    return product
+
+
+# @router.delete("/products/{product_id}", response_model=ProductModel)
+# def delete_product(product_id: str):
+#     product = product_collection.delete_one({"_id": ObjectId(product_id)})
 

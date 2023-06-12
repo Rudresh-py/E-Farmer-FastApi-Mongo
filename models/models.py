@@ -1,7 +1,9 @@
 from pydantic import BaseModel, EmailStr
 from fastapi import UploadFile
-from typing import Optional
+from typing import Optional, Union
 from datetime import datetime
+from bson import ObjectId
+from pydantic.class_validators import validator
 
 
 class UserRegisterModel(BaseModel):
@@ -19,7 +21,6 @@ class UserRegisterModel(BaseModel):
     is_aggregator: Optional[bool] = None
     created_at: Optional[datetime]
     updated_at: Optional[datetime]
-
 
 
 class UserLogin(BaseModel):
@@ -60,15 +61,17 @@ class FertilizersModel(BaseModel):
 
 
 class ProductModel(BaseModel):
-    name: str
-    desc: str
+    name: Optional[str]
+    desc: Optional[str]
     image: Optional[bytes] = None
     is_aggregator: Optional[bool] = None
     price: Optional[float] = None
-    # category: str
-    # user_id: str
+    category: Optional[str]
+    user_id: Optional[str]
     created_at: Optional[datetime]
     updated_at: Optional[datetime]
+
+
 
 # class machinarymodel(models.Model):
 #     user = models.ForeignKey(registertable, on_delete=models.CASCADE, null=True, blank=True)
