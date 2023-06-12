@@ -7,6 +7,6 @@ db = client["e-farmer_db"]
 # collection = db["your_collection_name"]
 user_register_collection = db["user_register"]
 fertilizers_collection = db["fertilizers"]
-
+product_collection = db["products"]
 
 

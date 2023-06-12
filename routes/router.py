@@ -1,102 +1,103 @@
 from typing import List
-
-from fastapi import APIRouter, UploadFile, HTTPException
+from fastapi import APIRouter
+from jwt.exceptions import DecodeError
+import jwt
+from fastapi.security import HTTPBasic
+from models.models import UserRegisterModel, UserLogin, ProductModel
+from database.db import user_register_collection, product_collection
 from fastapi import FastAPI, Depends, HTTPException, status
-from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
-from pymongo import MongoClient
+from fastapi.security import OAuth2PasswordBearer
 from passlib.context import CryptContext
 from datetime import datetime, timedelta
-import jwt
-from fastapi import FastAPI, Depends, HTTPException, status
-from fastapi.security import HTTPBasic, HTTPBasicCredentials
-from pymongo import MongoClient
-from passlib.context import CryptContext
-
-from models.models import UserRegisterModel, FertilizersModel
-from database.db import user_register_collection, fertilizers_collection
 
 router = APIRouter()
 security = HTTPBasic()
 pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
+oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/token")
+pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
+SECRET_KEY = "your-secret-key"
+ALGORITHM = "HS256"
+ACCESS_TOKEN_EXPIRE_MINUTES = 30
 
 
 @router.post("/register", response_model=UserRegisterModel)
 def register_user(user: UserRegisterModel):
+    email_exist = user_register_collection.find_one({"email": user.email})
+    username_exist = user_register_collection.find_one({"username": user.username})
+    if email_exist:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Email already registered")
+    elif username_exist:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Username already registered")
     user.created_at = datetime.utcnow()
     user.updated_at = datetime.utcnow()
+    user.password = get_password_hash(password=user.password)
     user_dict = user.dict()
     result = user_register_collection.insert_one(user_dict)
     user_dict["_id"] = str(result.inserted_id)
     return user_dict
 
 
+def get_password_hash(password):
+    return pwd_context.hash(password)
+
+
 @router.get("/users", response_model=List[UserRegisterModel])
 def get_users():
     users = []
-    for document in user_register_collection.find():
+    for document in user_register_collection.find({}):
         user_data = UserRegisterModel(**document)
         users.append(user_data)
     return users
 
 
-@router.post("/fertilizers", response_model=FertilizersModel)
-def add_fertilizers(fertilizer: FertilizersModel):
-    fertilizer.created_at = datetime.utcnow()
-    fertilizer.updated_at = datetime.utcnow()
-    fertilizer_dict = fertilizer.dict()
-    result = fertilizers_collection.insert_one(fertilizer_dict)
-    fertilizer_dict["_id"] = str(result.inserted_id)
-    return fertilizer_dict
+def verify_password(plain_password, hashed_password):
+    return pwd_context.verify(plain_password, hashed_password)
 
 
-@router.get("/fertilizers", response_model=List[FertilizersModel])
-def get_fertilizers():
-    fertilizers = []
-    for document in fertilizers_collection.find():
-        fertilizer_data = FertilizersModel(**document)
-        fertilizers.append(fertilizer_data)
-    return fertilizers
+def authenticate_user(email: str, password: str):
+    user = user_register_collection.find_one({"email": email})
+    if user and verify_password(password, user["password"]):
+        return user
 
-#
-#
-# # Create Fertilizer
-# @app.post("/fertilizers")
-# async def create_fertilizer(fertilizer: FertilizersModel):
-#     fertilizer.created_at = datetime.utcnow()
-#     fertilizer.updated_at = datetime.utcnow()
-#     result = await collection.insert_one(fertilizer.dict())
-#     return {"id": str(result.inserted_id)}
-#
-# # Get Fertilizer
-# @app.get("/fertilizers/{fertilizer_id}")
-# async def get_fertilizer(fertilizer_id: str):
-#     fertilizer = await collection.find_one({"_id": fertilizer_id})
-#     if fertilizer:
-#         return fertilizer
-#     else:
-#         return {"message": "Fertilizer not found"}
-#
-# # Update Fertilizer
-# @app.put("/fertilizers/{fertilizer_id}")
-# async def update_fertilizer(fertilizer_id: str, fertilizer: FertilizersModel):
-#     fertilizer.updated_at = datetime.utcnow()
-#     result = await collection.update_one({"_id": fertilizer_id}, {"$set": fertilizer.dict()})
-#     if result.modified_count == 1:
-#         return {"message": "Fertilizer updated successfully"}
-#     else:
-#         return {"message": "Fertilizer not found"}
-#
-# # Delete Fertilizer
-# @app.delete("/fertilizers/{fertilizer_id}")
-# async def delete_fertilizer(fertilizer_id: str):
-#     result = await collection.delete_one({"_id": fertilizer_id})
-#     if result.deleted_count == 1:
-#         return {"message": "Fertilizer deleted successfully"}
-#     else:
-#         return {"message": "Fertilizer not found"}
-#
-# # Get All Fertilizers
-# @app.get("/fertilizers")
-# async def get_all_fertilizers():
-#     fertilizers = await collection.find().to_list(length=None)
-#     return fertilizers
+
+def create_access_token(data: dict, expires_delta: timedelta):
+    to_encode = data.copy()
+    expire = datetime.utcnow() + expires_delta
+    to_encode.update({"exp": expire})
+    encoded_jwt = jwt.encode(to_encode, SECRET_KEY, algorithm=ALGORITHM)
+    return encoded_jwt
+
+
+def get_current_user(token: str = Depends(oauth2_scheme)):
+    try:
+        payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
+        email: str = payload.get("sub")
+        if email is None:
+            raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid authentication credentials")
+        user = user_register_collection.find_one({"email": email})
+        if user is None:
+            raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid email or password")
+        return user
+    except DecodeError:
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid token")
+
+
+@router.post("/login")
+def login(user: UserLogin):
+    authenticated_user = authenticate_user(user.email, user.password)
+    if not authenticated_user:
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid email or password")
+    access_token_expires = timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES)
+    access_token = create_access_token(
+        data={"sub": authenticated_user["email"]}, expires_delta=access_token_expires
+    )
+    return {"access_token": access_token, "token_type": "bearer"}
+
+
+@router.post("/products", status_code=201)
+def create_post(product: ProductModel, user: UserRegisterModel = Depends(get_current_user)):
+    post_data = product.dict()
+    post_data["user_id"] = user["_id"]  # Assuming the User model has an "id" field representing the user ID
+    post_id = product_collection.insert_one(post_data).inserted_id
+    return {"post_id": str(post_id)}
+
