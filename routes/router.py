@@ -10,6 +10,7 @@ from fastapi.security import OAuth2PasswordBearer
 from passlib.context import CryptContext
 from datetime import datetime, timedelta
 from bson import ObjectId
+import shortuuid
 
 router = APIRouter()
 security = HTTPBasic()
@@ -31,11 +32,22 @@ def register_user(user: UserRegisterModel):
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Username already registered")
     user.created_at = datetime.utcnow()
     user.updated_at = datetime.utcnow()
+    generate_role_id(user)
     user.password = get_password_hash(password=user.password)
     user_dict = user.dict()
     result = user_register_collection.insert_one(user_dict)
     user_dict["_id"] = str(result.inserted_id)
     return user_dict
+
+
+def generate_role_id(user: UserRegisterModel):
+    s = shortuuid.ShortUUID(alphabet="0123456789")
+    if user.is_farmer:
+        farmer_id = "FARM" + s.random(length=5)
+        user.farmerid = farmer_id
+    elif user.is_aggregator:
+        aggregator_id = "AGGR" + s.random(length=5)
+        user.aggreid = aggregator_id
 
 
 def get_password_hash(password):
@@ -126,15 +138,21 @@ def get_products():
     return products
 
 
-@router.get("/products/{product_id}", response_model=ProductModel)
+@router.get("/products/{product_id}")
 def get_products(product_id: str):
     product = product_collection.find_one({"_id": ObjectId(product_id)})
-    product["user_id"] = str(product["user_id"])
-    product = ProductModel(**product)
-    return product
+    if product:
+        product["user_id"] = str(product["user_id"])
+        product = ProductModel(**product)
+        return product
+    else:
+        return {"message": "Product not found"}
 
 
-# @router.delete("/products/{product_id}", response_model=ProductModel)
-# def delete_product(product_id: str):
-#     product = product_collection.delete_one({"_id": ObjectId(product_id)})
-
+@router.delete("/products/{product_id}")
+def delete_product(product_id: str):
+    product = product_collection.delete_one({"_id": ObjectId(product_id)})
+    if product.deleted_count > 0:
+        return {"message": "Product deleted successfully"}
+    else:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Product not found")
