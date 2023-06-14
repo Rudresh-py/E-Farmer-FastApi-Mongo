@@ -3,15 +3,17 @@ from fastapi import APIRouter
 from jwt.exceptions import DecodeError
 import jwt
 from fastapi.security import HTTPBasic
-from models.models import UserRegisterModel, UserLogin, ProductModel
-from database.db import user_register_collection, product_collection
+from models.models import UserRegisterModel, UserLogin, ProductModel, Order, OrderStatus
+from database.db import user_register_collection, product_collection, order_collection
 from fastapi import FastAPI, Depends, HTTPException, status
 from fastapi.security import OAuth2PasswordBearer
 from passlib.context import CryptContext
 from datetime import datetime, timedelta
 from bson import ObjectId
 import shortuuid
+import stripe
 
+stripe.api_key = "YOUR_STRIPE_API_KEY"
 router = APIRouter()
 security = HTTPBasic()
 pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
@@ -20,6 +22,10 @@ pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 SECRET_KEY = "your-secret-key"
 ALGORITHM = "HS256"
 ACCESS_TOKEN_EXPIRE_MINUTES = 500
+
+stripe.api_key = "sk_test_51Lk2oZSHQ3xxH3ruXe6LsemyQQSTjHI0hV9a5VoOmzJTtJ282vK1Akfv7XW69183ignQaxI8hnGpyYzKJ0xpR5go00ufAE8rim"
+
+STRIPE_WEBHOOK_SECRET = "pk_test_51Lk2oZSHQ3xxH3rupasgG1mBVxYEVP3Jfi4AW4jzlIWdGEEcGcT6raWKbwZWPUZf4fmovfSVXGKzPVlutRSH1bnb00e1sLwMqt"
 
 
 @router.post("/register", response_model=UserRegisterModel)
@@ -156,3 +162,39 @@ def delete_product(product_id: str):
         return {"message": "Product deleted successfully"}
     else:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Product not found")
+
+
+@router.post("/payment_intent/{product_id}")
+def create_payment_intent(product_id: str, user: UserRegisterModel = Depends(get_current_user)):
+    product = product_collection.find_one({"_id": ObjectId(product_id)})
+    if not product:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Order not found")
+
+    intent = stripe.PaymentIntent.create(
+        amount=int(product["price"]),
+        currency="usd",
+        description=f"Order: {product_id}",
+        payment_method_types=["card"]  # Specify the payment method types
+    )
+    payment_intent_id = intent["id"]
+
+    if intent.status == "requires_payment_method":
+        return {"client_secret": intent.client_secret}
+
+    if intent.status == "succeeded":
+        # Process the payment and create the order
+        order = Order()
+        order_dict = order.dict()
+        order_dict["user_id"] = str(user["_id"])
+        order_dict["order_id"] = str(product["user_id"])
+        order_dict["product_id"] = str(product["_id"])
+        order_dict["product_name"] = product["name"]
+        order_dict["price"] = str(product["price"])
+        order_dict["payment_id"] = payment_intent_id
+        order_dict["created_at"] = datetime.utcnow()
+        order_dict["updated_at"] = datetime.utcnow()
+        order_id = order_collection.insert_one(order_dict).inserted_id
+        return {"message": f"Payment successful for Order_id: {str(order_id)}"}
+    else:
+        return {"message": "Payment failed"}
+
